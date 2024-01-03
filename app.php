@@ -7,6 +7,7 @@ use PhpParser\NodeVisitorAbstract;
 use PhpParser\ParserFactory;
 use PhpParser\PrettyPrinter;
 
+
 class PhpFiles
 {
     private string $php_source_path;
@@ -17,8 +18,8 @@ class PhpFiles
     }
     public function findAll(): PhpFiles
     {
-        $this->php_files_path = glob($this->php_files_path . '/**/*.php', GLOB_BRACE);
-        switch ($this->php_source_path) {
+        $this->php_files_path = glob($this->php_source_path . '/*.php', GLOB_BRACE);
+        switch ($this->php_files_path) {
             case false:
                 throw new Exception('Finding PHP files failed');
             case []:
@@ -39,9 +40,8 @@ class RemoveIncludeVisitor extends NodeVisitorAbstract
     public function leaveNode(Node $node)
     {
         if ($node instanceof Node\Expr\Include_) {
-            return NodeTraverser::REMOVE_NODE;
+            return new PhpParser\Node\Expr\ConstFetch(new PhpParser\Node\Name('null'));
         }
-        return null;
     }
 }
 
@@ -71,6 +71,7 @@ class PhpBuilder
         $stmts = $this->parser->parse($code);
         $stmts = $this->traverser->traverse($stmts);
         $new_code = $this->printer->prettyPrintFile($stmts);
+        $new_code = ltrim($new_code, "<?php");
         file_put_contents($this->build_file, "{$new_code}\n", FILE_APPEND);
     }
     public function build()
@@ -81,3 +82,6 @@ class PhpBuilder
         }
     }
 }
+
+$builder = new PhpBuilder(["tests"], "build.php");
+$builder->build();

@@ -1,11 +1,11 @@
 <?php
 require_once 'vendor/autoload.php';
 
-use PhpParser\Error;
 use PhpParser\Node;
-use PhpParser\Node\Scalar\String_;
+use PhpParser\NodeTraverser;
 use PhpParser\NodeVisitorAbstract;
 use PhpParser\ParserFactory;
+use PhpParser\PrettyPrinter;
 
 class PhpFiles
 {
@@ -34,18 +34,14 @@ class PhpFiles
     }
 }
 
-class IncludeVisitor extends NodeVisitorAbstract
+class RemoveIncludeVisitor extends NodeVisitorAbstract
 {
-    public array $includes = [];
-    public function enterNode(Node $node)
+    public function leaveNode(Node $node)
     {
-        if (
-            $node instanceof Node\Expr\Include_
-        ) {
-            $nextNode = $node->getAttribute("next");
-            if ($nextNode instanceof String_)
-                $this->includes[] = $nextNode;
+        if ($node instanceof Node\Expr\Include_) {
+            return NodeTraverser::REMOVE_NODE;
         }
+        return null;
     }
 }
 
@@ -53,22 +49,29 @@ class PhpBuilder
 {
     private $parser;
     private $traverser;
-    private $visitor;
+    private $removeIncludeVisitor;
+    private $printer;
     private array $php_source_path;
-    public function __construct(array $php_source_path)
+    private string $build_file;
+    public function __construct(array $php_source_path, string $build_file)
     {
         $this->php_source_path = $php_source_path;
         $this->parser = (new ParserFactory)->create(ParserFactory::PREFER_PHP7);
-        $this->traverser = new \PhpParser\NodeTraverser();
-        $this->visitor = new IncludeVisitor();
-        $this->traverser->addVisitor($this->visitor);
+        $this->traverser = new NodeTraverser();
+        $this->removeIncludeVisitor = new RemoveIncludeVisitor();
+        $this->traverser->addVisitor($this->removeIncludeVisitor);
+        $this->printer = new PrettyPrinter\Standard();
+        $this->build_file = $build_file;
+
+        file_put_contents($this->build_file, "<?php\n");
     }
-    private function buildOneFile($php_file)
+    private function buildOneFile(string $php_file): void
     {
         $code = file_get_contents($php_file);
         $stmts = $this->parser->parse($code);
         $stmts = $this->traverser->traverse($stmts);
-        var_dump($this->visitor->includes);
+        $new_code = $this->printer->prettyPrintFile($stmts);
+        file_put_contents($this->build_file, "{$new_code}\n", FILE_APPEND);
     }
     public function build()
     {
